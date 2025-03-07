@@ -68,6 +68,8 @@ def login(user: UserLogin, db: Session = Depends(get_db)):
 @router.get("/validate")
 def validate_token(token: str, x_internal_secret: str = Header(None)):
     # Validate internal secret
+    print(f"x_internal_secret: {x_internal_secret}")
+    print(f"INTERNAL_SECRET: {INTERNAL_SECRET}")
     if x_internal_secret != INTERNAL_SECRET:
         raise HTTPException(status_code=403, detail="Forbidden")
 
