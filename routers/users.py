@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from passlib.hash import bcrypt
 from jose import jwt, JWTError
 from datetime import datetime, timedelta
-from database import get_db, Base, engine
+from database import get_db
 from models import User
 import os
 
@@ -42,6 +42,34 @@ def create_access_token(user_id: int):
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
 
+# Extract user from token
+def get_current_user(
+    authorization: str = Header(None), db: Session = Depends(get_db)
+):
+    """
+    Decode JWT and return authenticated user.
+    """
+    if authorization is None:
+        raise HTTPException(status_code=401, detail="Authorization header missing")
+
+    # Remove "Bearer " prefix if present
+    token = authorization.replace("Bearer ", "").strip()
+
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id: int = payload.get("user_id")
+        if user_id is None:
+            raise HTTPException(status_code=401, detail="Invalid token")
+
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        return user
+
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+
 # Registration endpoint
 @router.post("/register")
 def register(user: UserCreate, db: Session = Depends(get_db)):
@@ -68,8 +96,6 @@ def login(user: UserLogin, db: Session = Depends(get_db)):
 @router.get("/validate")
 def validate_token(token: str, x_internal_secret: str = Header(None)):
     # Validate internal secret
-    print(f"x_internal_secret: {x_internal_secret}")
-    print(f"INTERNAL_SECRET: {INTERNAL_SECRET}")
     if x_internal_secret != INTERNAL_SECRET:
         raise HTTPException(status_code=403, detail="Forbidden")
 
@@ -81,3 +107,11 @@ def validate_token(token: str, x_internal_secret: str = Header(None)):
         return {"user_id": user_id}
     except JWTError:
         raise HTTPException(status_code=401, detail="Invalid token")
+
+
+@router.get("/profile")
+def get_profile(user: User = Depends(get_current_user)):
+    """
+    Retrieve authenticated user's profile (name & email).
+    """
+    return {"name": user.name, "email": user.email}
